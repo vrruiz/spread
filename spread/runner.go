@@ -33,6 +33,7 @@ type Options struct {
 	Discard     bool
 	Residue     string
 	Seed        int64
+	Xunit       bool
 }
 
 type Runner struct {
@@ -142,7 +143,7 @@ func (r *Runner) loop() (err error) {
 					r.add(&r.stats.TaskAbort, job)
 				}
 			}
-			r.stats.log()
+			r.stats.log(r.options.Xunit)
 		}
 		if !r.options.Reuse || r.options.Discard {
 			for len(r.servers) > 0 {
@@ -981,7 +982,7 @@ func (s *stats) errorCount() int {
 	return count
 }
 
-func (s *stats) log() {
+func (s *stats) log(xunit bool) {
 	printf("Successful tasks: %d", len(s.TaskDone))
 	printf("Aborted tasks: %d", len(s.TaskAbort))
 
@@ -994,6 +995,28 @@ func (s *stats) log() {
 	logNames(printf, "Failed backend restore", s.BackendRestoreError, backendName)
 	logNames(printf, "Failed project prepare", s.ProjectPrepareError, projectName)
 	logNames(printf, "Failed project restore", s.ProjectRestoreError, projectName)
+
+	if (xunit) {
+		x, err := os.Create("spreadtests.xml")
+		if err != nil {
+			panic(err)
+		}
+		x.WriteString("<?xml version='1.0' encoding='UTF-8'?>\n")
+		x.WriteString(fmt.Sprintf("<testsuite name='spreadtests' tests='%d' errors='%d' failures='%d' skip='0'>\n", len(s.TaskDone), s.errorCount(), len(s.TaskAbort)))
+		for _, job := range s.TaskDone {
+			if job == nil {
+				continue
+			}
+			x.WriteString(fmt.Sprintf("  <testcase classname='%s' name='%s'></testcase>\n", job.Task.Name))
+		}
+		for _, job := range s.TaskAbort {
+			if job == nil {
+				continue
+			}
+			x.WriteString(fmt.Sprintf("  <testcase classname='%s' name='%'>\n	<error></error>\n  </testcase>\n", job.Task.Name))
+		}
+		x.WriteString("</testsuite>\n")
+	}
 }
 
 func projectName(job *Job) string { return "project" }
